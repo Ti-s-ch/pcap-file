@@ -1,7 +1,9 @@
 use crate::errors::PcapError;
-use byteorder::{ByteOrder, ReadBytesExt};
+use crate::ResultParsing;
+use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 use derive_into_owned::IntoOwned;
 use std::borrow::Cow;
+use std::io::Write;
 
 /// The Simple Packet Block (SPB) is a lightweight container for storing the packets coming from the network.
 /// Its presence is optional.
@@ -29,5 +31,16 @@ impl<'a> SimplePacketBlock<'a> {
         };
 
         Ok((&[], packet))
+    }
+
+    pub fn len(&self) -> u32 {
+        4 // field original_len
+            + self.data.len() as u32
+    }
+
+    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> ResultParsing<()> {
+        writer.write_u32::<B>(self.original_len)?;
+        writer.write_all(&self.data)?;
+        Ok(())
     }
 }

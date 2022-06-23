@@ -1,10 +1,11 @@
 use crate::errors::PcapError;
 use crate::pcapng::blocks::common::opts_from_slice;
 use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, UnknownOption};
-use crate::Endianness;
-use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
+use crate::{Endianness, ResultParsing};
+use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt, WriteBytesExt};
 use derive_into_owned::IntoOwned;
 use std::borrow::Cow;
+use std::io::Write;
 
 ///Section Header Block: it defines the most important characteristics of the capture file.
 #[derive(Clone, Debug, IntoOwned)]
@@ -78,6 +79,22 @@ impl<'a> SectionHeaderBlock<'a> {
             _ => unreachable!(),
         }
     }
+
+    pub fn len(&self) -> u32 {
+        16 // base block size
+            + self.options.iter().map(SectionHeaderOption::len).fold(0, |a,b| a + b) as u32
+    }
+
+    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> ResultParsing<()> {
+        writer.write_u32::<B>(self.magic)?;
+        writer.write_u16::<B>(self.major_version)?;
+        writer.write_u16::<B>(self.minor_version)?;
+        writer.write_i64::<B>(self.section_length)?;
+        for opt in &self.options {
+            opt.write_to::<W, B>(writer)?;
+        }
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, IntoOwned)]
@@ -127,5 +144,39 @@ impl<'a> SectionHeaderOption<'a> {
 
             Ok(opt)
         })
+    }
+
+    pub fn len(&self) -> u32 {
+        match self {
+            SectionHeaderOption::Comment(str)
+            | SectionHeaderOption::OS(str)
+            | SectionHeaderOption::UserApplication(str)
+            | SectionHeaderOption::Hardware(str) => str.len() as u32,
+            SectionHeaderOption::CustomBinary(str) => str.len(),
+            SectionHeaderOption::CustomUtf8(str) => str.len(),
+            SectionHeaderOption::Unknown(str) => str.len(),
+        }
+    }
+
+    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> ResultParsing<()> {
+        match self {
+            SectionHeaderOption::Comment(str)
+            | SectionHeaderOption::OS(str)
+            | SectionHeaderOption::UserApplication(str)
+            | SectionHeaderOption::Hardware(str) => {
+                writer.write_all(&str.to_string().as_bytes())?;
+            }
+            SectionHeaderOption::CustomBinary(str) => {
+                str.write_to::<W, B>(writer)?;
+            }
+            SectionHeaderOption::CustomUtf8(str) => {
+                str.write_to::<W, B>(writer)?;
+            }
+            SectionHeaderOption::Unknown(str) => {
+                str.write_to::<W, B>(writer)?;
+            }
+        }
+        //TODO: write
+        Ok(())
     }
 }

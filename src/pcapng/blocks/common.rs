@@ -4,12 +4,12 @@ use crate::pcapng::blocks::{
     SectionHeaderBlock, SimplePacketBlock, SystemdJournalExportBlock,
 };
 use crate::pcapng::PacketBlock;
-use crate::Endianness;
+use crate::{Endianness, ResultParsing};
 use byteorder::WriteBytesExt;
 use byteorder::{BigEndian, ByteOrder, LittleEndian, ReadBytesExt};
 use derive_into_owned::IntoOwned;
 use std::borrow::Cow;
-use std::io::Read;
+use std::io::{Read, Write};
 
 //   0               1               2               3
 //   0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7 0 1 2 3 4 5 6 7
@@ -280,6 +280,22 @@ impl From<u32> for BlockType {
     }
 }
 
+impl From<BlockType> for u32 {
+    fn from(src: BlockType) -> Self {
+        match src {
+            BlockType::SectionHeader => 0x0A0D0D0A,
+            BlockType::InterfaceDescription => 0x00000001,
+            BlockType::Packet => 0x00000002,
+            BlockType::SimplePacket => 0x00000003,
+            BlockType::NameResolution => 0x00000004,
+            BlockType::InterfaceStatistics => 0x00000005,
+            BlockType::EnhancedPacket => 0x00000006,
+            BlockType::SystemdJournalExport => 0x00000009,
+            BlockType::Unknown(x) => x,
+        }
+    }
+}
+
 /// PcapNg parsed blocks
 #[derive(Clone, Debug, IntoOwned)]
 pub enum ParsedBlock<'a> {
@@ -353,6 +369,36 @@ impl<'a> ParsedBlock<'a> {
             _ => None,
         }
     }
+
+    pub fn block_type(&self) -> BlockType {
+        match self {
+            ParsedBlock::SectionHeader(_) => BlockType::SectionHeader,
+            ParsedBlock::SimplePacket(_) => BlockType::SimplePacket,
+            _ => panic!("unsupported block type"),
+        }
+    }
+
+    pub fn len(&self) -> u32 {
+        match self {
+            ParsedBlock::SectionHeader(block) => block.len(),
+            ParsedBlock::SimplePacket(block) => block.len(),
+            _ => panic!("unsupported block type"),
+        }
+    }
+
+    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> ResultParsing<()> {
+        let len = self.len() + 12;
+
+        writer.write_u32::<B>(self.block_type().into())?;
+        writer.write_u32::<B>(len)?;
+        match self {
+            ParsedBlock::SectionHeader(block) => block.write_to::<W, B>(writer)?,
+            ParsedBlock::SimplePacket(block) => block.write_to::<W, B>(writer)?,
+            _ => panic!("unsupported block type"),
+        }
+        writer.write_u32::<B>(len)?;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, IntoOwned)]
@@ -369,6 +415,15 @@ impl<'a> UnknownBlock<'a> {
             length,
             value: Cow::Borrowed(value),
         }
+    }
+
+    pub fn len(&self) -> u32 {
+        self.value.len() as u32
+    }
+
+    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> ResultParsing<()> {
+        writer.write_all(&self.value)?;
+        Ok(())
     }
 }
 
@@ -431,6 +486,15 @@ impl<'a> UnknownOption<'a> {
             value: Cow::Borrowed(value),
         }
     }
+
+    pub fn len(&self) -> u32 {
+        self.value.len() as u32
+    }
+
+    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> ResultParsing<()> {
+        writer.write_all(&self.value)?;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, IntoOwned)]
@@ -451,6 +515,15 @@ impl<'a> CustomBinaryOption<'a> {
 
         Ok(opt)
     }
+
+    pub fn len(&self) -> u32 {
+        self.value.len() as u32
+    }
+
+    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> ResultParsing<()> {
+        writer.write_all(&self.value)?;
+        Ok(())
+    }
 }
 
 #[derive(Clone, Debug, IntoOwned)]
@@ -470,5 +543,14 @@ impl<'a> CustomUtf8Option<'a> {
         };
 
         Ok(opt)
+    }
+
+    pub fn len(&self) -> u32 {
+        self.value.len() as u32
+    }
+
+    pub fn write_to<W: Write, B: ByteOrder>(&self, writer: &mut W) -> ResultParsing<()> {
+        writer.write_all(&self.value.to_string().as_bytes())?;
+        Ok(())
     }
 }
