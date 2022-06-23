@@ -1,15 +1,13 @@
-use crate::pcapng::blocks::common::opts_from_slice;
 use crate::errors::PcapError;
+use crate::pcapng::blocks::common::opts_from_slice;
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, UnknownOption};
 use byteorder::{ByteOrder, ReadBytesExt};
-use crate::pcapng::{UnknownOption, CustomUtf8Option, CustomBinaryOption};
-use std::borrow::Cow;
 use derive_into_owned::IntoOwned;
-
+use std::borrow::Cow;
 
 /// The Interface Statistics Block contains the capture statistics for a given interface and it is optional.
 #[derive(Clone, Debug, IntoOwned)]
 pub struct InterfaceStatisticsBlock<'a> {
-
     /// Specifies the interface these statistics refers to.
     /// The correct interface will be the one whose Interface Description Block (within the current Section of the file)
     /// is identified by same number of this field.
@@ -21,15 +19,15 @@ pub struct InterfaceStatisticsBlock<'a> {
     pub timestamp: u64,
 
     /// Options
-    pub options: Vec<InterfaceStatisticsOption<'a>>
+    pub options: Vec<InterfaceStatisticsOption<'a>>,
 }
 
 impl<'a> InterfaceStatisticsBlock<'a> {
-
-    pub fn from_slice<B:ByteOrder>(mut slice: &'a[u8]) -> Result<(&'a[u8], Self), PcapError> {
-
+    pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
         if slice.len() < 12 {
-            return Err(PcapError::InvalidField("InterfaceStatisticsBlock: block length < 12"));
+            return Err(PcapError::InvalidField(
+                "InterfaceStatisticsBlock: block length < 12",
+            ));
         }
 
         let interface_id = slice.read_u32::<B>()? as u32;
@@ -39,7 +37,7 @@ impl<'a> InterfaceStatisticsBlock<'a> {
         let block = InterfaceStatisticsBlock {
             interface_id,
             timestamp,
-            options
+            options,
         };
 
         Ok((slice, block))
@@ -48,7 +46,6 @@ impl<'a> InterfaceStatisticsBlock<'a> {
 
 #[derive(Clone, Debug, IntoOwned)]
 pub enum InterfaceStatisticsOption<'a> {
-
     /// The opt_comment option is a UTF-8 string containing human-readable comment text
     /// that is associated to the current block.
     Comment(Cow<'a, str>),
@@ -86,17 +83,13 @@ pub enum InterfaceStatisticsOption<'a> {
     CustomUtf8(CustomUtf8Option<'a>),
 
     /// Unknown option
-    Unknown(UnknownOption<'a>)
+    Unknown(UnknownOption<'a>),
 }
 
 impl<'a> InterfaceStatisticsOption<'a> {
-
-    fn from_slice<B:ByteOrder>(slice: &'a[u8]) -> Result<(&'a [u8], Vec<Self>), PcapError> {
-
+    fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&'a [u8], Vec<Self>), PcapError> {
         opts_from_slice::<B, _, _>(slice, |mut slice, code, length| {
-
             let opt = match code {
-
                 1 => InterfaceStatisticsOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
                 2 => InterfaceStatisticsOption::IsbStartTime(slice.read_u64::<B>()?),
                 3 => InterfaceStatisticsOption::IsbEndTime(slice.read_u64::<B>()?),
@@ -106,14 +99,17 @@ impl<'a> InterfaceStatisticsOption<'a> {
                 7 => InterfaceStatisticsOption::IsbOsDrop(slice.read_u64::<B>()?),
                 8 => InterfaceStatisticsOption::IsbUsrDeliv(slice.read_u64::<B>()?),
 
-                2988 | 19372 => InterfaceStatisticsOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-                2989 | 19373 => InterfaceStatisticsOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
+                2988 | 19372 => InterfaceStatisticsOption::CustomUtf8(
+                    CustomUtf8Option::from_slice::<B>(code, slice)?,
+                ),
+                2989 | 19373 => InterfaceStatisticsOption::CustomBinary(
+                    CustomBinaryOption::from_slice::<B>(code, slice)?,
+                ),
 
-                _ => InterfaceStatisticsOption::Unknown(UnknownOption::new(code, length, slice))
+                _ => InterfaceStatisticsOption::Unknown(UnknownOption::new(code, length, slice)),
             };
 
             Ok(opt)
         })
     }
 }
-

@@ -1,8 +1,8 @@
-use byteorder::{BigEndian, LittleEndian};
 use crate::errors::PcapError;
-use crate::pcapng::blocks::{ParsedBlock, EnhancedPacketBlock, InterfaceDescriptionBlock};
+use crate::pcapng::blocks::{EnhancedPacketBlock, InterfaceDescriptionBlock, ParsedBlock};
+use crate::pcapng::{Block, BlockType, SectionHeaderBlock};
 use crate::Endianness;
-use crate::pcapng::{SectionHeaderBlock, Block, BlockType};
+use byteorder::{BigEndian, LittleEndian};
 
 /// Parser for a PcapNg formated stream.
 ///
@@ -46,27 +46,25 @@ use crate::pcapng::{SectionHeaderBlock, Block, BlockType};
 /// ```
 pub struct PcapNgParser {
     section: SectionHeaderBlock<'static>,
-    interfaces: Vec<InterfaceDescriptionBlock<'static>>
+    interfaces: Vec<InterfaceDescriptionBlock<'static>>,
 }
 
 impl PcapNgParser {
-
     /// Creates a new `PcapNgParser`.
     ///
     /// Parses the first block which must be a valid SectionHeaderBlock
     pub fn new(src: &[u8]) -> Result<(&[u8], Self), PcapError> {
-
         let (rem, block) = Block::from_slice::<BigEndian>(src)?;
         let section = block.parsed()?;
 
         let section = match section {
             ParsedBlock::SectionHeader(section) => section.into_owned(),
-            _ => return Err(PcapError::InvalidField("SectionHeader missing"))
+            _ => return Err(PcapError::InvalidField("SectionHeader missing")),
         };
 
         let parser = PcapNgParser {
             section,
-            interfaces: vec![]
+            interfaces: vec![],
         };
 
         Ok((rem, parser))
@@ -74,23 +72,25 @@ impl PcapNgParser {
 
     /// Returns the remainder and the next block
     pub fn next_block<'a>(&mut self, src: &'a [u8]) -> Result<(&'a [u8], Block<'a>), PcapError> {
-
         // Read next Block
         let endianess = self.section.endianness();
         let (rem, block) = match endianess {
             Endianness::Big => Block::from_slice::<BigEndian>(src)?,
-            Endianness::Little => Block::from_slice::<LittleEndian>(src)?
+            Endianness::Little => Block::from_slice::<LittleEndian>(src)?,
         };
 
         match block.type_ {
             BlockType::SectionHeader => {
-
                 self.section = block.parsed()?.into_section_header().unwrap().into_owned();
                 self.interfaces.clear();
-            },
-            BlockType::InterfaceDescription => {
-                self.interfaces.push(block.parsed()?.into_interface_description().unwrap().into_owned())
-            },
+            }
+            BlockType::InterfaceDescription => self.interfaces.push(
+                block
+                    .parsed()?
+                    .into_interface_description()
+                    .unwrap()
+                    .into_owned(),
+            ),
             _ => {}
         }
 
@@ -108,7 +108,10 @@ impl PcapNgParser {
     }
 
     /// Returns the InterfaceDescriptionBlock corresponding to the given packet
-    pub fn packet_interface(&self, packet: &EnhancedPacketBlock) -> Option<&InterfaceDescriptionBlock> {
+    pub fn packet_interface(
+        &self,
+        packet: &EnhancedPacketBlock,
+    ) -> Option<&InterfaceDescriptionBlock> {
         self.interfaces.get(packet.interface_id as usize)
     }
 }

@@ -1,16 +1,14 @@
-use crate::pcapng::blocks::opts_from_slice;
 use crate::errors::PcapError;
+use crate::pcapng::blocks::opts_from_slice;
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, UnknownOption};
 use byteorder::{ByteOrder, ReadBytesExt};
-use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption};
-use std::borrow::Cow;
 use derive_into_owned::IntoOwned;
-
+use std::borrow::Cow;
 
 /// The Packet Block is obsolete, and MUST NOT be used in new files.
 /// Use the Enhanced Packet Block or Simple Packet Block instead.
 #[derive(Clone, Debug, IntoOwned)]
 pub struct PacketBlock<'a> {
-
     /// It specifies the interface this packet comes from.
     pub interface_id: u16,
 
@@ -33,15 +31,15 @@ pub struct PacketBlock<'a> {
     pub data: Cow<'a, [u8]>,
 
     /// Options
-    pub options: Vec<PacketOption<'a>>
+    pub options: Vec<PacketOption<'a>>,
 }
 
 impl<'a> PacketBlock<'a> {
-
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
-
         if slice.len() < 20 {
-            return Err(PcapError::InvalidField("EnhancedPacketBlock: block length length < 20"));
+            return Err(PcapError::InvalidField(
+                "EnhancedPacketBlock: block length length < 20",
+            ));
         }
 
         let interface_id = slice.read_u16::<B>()?;
@@ -54,7 +52,9 @@ impl<'a> PacketBlock<'a> {
         let tot_len = captured_len as usize + pad_len;
 
         if slice.len() < tot_len {
-            return Err(PcapError::InvalidField("EnhancedPacketBlock: captured_len + padding > block length"));
+            return Err(PcapError::InvalidField(
+                "EnhancedPacketBlock: captured_len + padding > block length",
+            ));
         }
 
         let data = &slice[..captured_len as usize];
@@ -68,7 +68,7 @@ impl<'a> PacketBlock<'a> {
             captured_len,
             original_len,
             data: Cow::Borrowed(data),
-            options
+            options,
         };
 
         Ok((slice, block))
@@ -77,7 +77,6 @@ impl<'a> PacketBlock<'a> {
 
 #[derive(Clone, Debug, IntoOwned)]
 pub enum PacketOption<'a> {
-
     /// Comment associated with the current block
     Comment(Cow<'a, str>),
 
@@ -94,36 +93,33 @@ pub enum PacketOption<'a> {
     CustomUtf8(CustomUtf8Option<'a>),
 
     /// Unknown option
-    Unknown(UnknownOption<'a>)
+    Unknown(UnknownOption<'a>),
 }
 
-
 impl<'a> PacketOption<'a> {
-
-    pub fn from_slice<B:ByteOrder>(slice: &'a [u8]) -> Result<(&'a[u8], Vec<Self>), PcapError> {
-
+    pub fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&'a [u8], Vec<Self>), PcapError> {
         opts_from_slice::<B, _, _>(slice, |mut slice, code, length| {
-
             let opt = match code {
-
                 1 => PacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
                 2 => {
                     if slice.len() != 4 {
-                        return Err(PcapError::InvalidField("PacketOption: Flags length != 4"))
+                        return Err(PcapError::InvalidField("PacketOption: Flags length != 4"));
                     }
                     PacketOption::Flags(slice.read_u32::<B>()?)
-                },
+                }
                 3 => PacketOption::Hash(Cow::Borrowed(slice)),
 
-                2988 | 19372 => PacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-                2989 | 19373 => PacketOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
+                2988 | 19372 => {
+                    PacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?)
+                }
+                2989 | 19373 => {
+                    PacketOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?)
+                }
 
-                _ => PacketOption::Unknown(UnknownOption::new(code, length, slice))
+                _ => PacketOption::Unknown(UnknownOption::new(code, length, slice)),
             };
 
             Ok(opt)
         })
     }
 }
-
-

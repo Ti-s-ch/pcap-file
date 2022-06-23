@@ -1,16 +1,8 @@
 use byteorder::{ByteOrder, ReadBytesExt, WriteBytesExt};
 
-use crate::{
-    errors::*,
-    TsResolution
-};
+use crate::{errors::*, TsResolution};
 
-use std::{
-    borrow::Cow,
-    io::Read,
-    io::Write,
-    time::Duration
-};
+use std::{borrow::Cow, io::Read, io::Write, time::Duration};
 
 /// Describes a pcap packet header.
 #[derive(Copy, Clone, Default, Debug, Eq, PartialEq)]
@@ -25,30 +17,37 @@ pub struct PacketHeader {
     pub incl_len: u32,
 
     /// Original length of the packet on the wire
-    pub orig_len: u32
+    pub orig_len: u32,
 }
 
 impl PacketHeader {
     /// Create a new `PacketHeader` with the given parameters.
-    pub fn new(ts_sec: u32, ts_nsec: u32, incl_len:u32, orig_len:u32) -> PacketHeader {
+    pub fn new(ts_sec: u32, ts_nsec: u32, incl_len: u32, orig_len: u32) -> PacketHeader {
         PacketHeader {
             ts_sec,
             ts_nsec,
             incl_len,
-            orig_len
+            orig_len,
         }
     }
 
     /// Create a new `PacketHeader` from a reader.
-    pub fn from_reader<R: Read, B: ByteOrder>(reader: &mut R, ts_resolution: TsResolution) -> ResultParsing<PacketHeader> {
+    pub fn from_reader<R: Read, B: ByteOrder>(
+        reader: &mut R,
+        ts_resolution: TsResolution,
+    ) -> ResultParsing<PacketHeader> {
         // Read and validate timestamps
         let ts_sec = reader.read_u32::<B>()?;
         let mut ts_nsec = reader.read_u32::<B>()?;
         if ts_resolution == TsResolution::MicroSecond {
-            ts_nsec = ts_nsec.checked_mul(1000).ok_or(PcapError::InvalidField("Packet Header ts_microsecond can't be converted to nanosecond"))?;
+            ts_nsec = ts_nsec.checked_mul(1000).ok_or(PcapError::InvalidField(
+                "Packet Header ts_microsecond can't be converted to nanosecond",
+            ))?;
         }
         if ts_nsec > 1_000_000_000 {
-            return Err(PcapError::InvalidField("Packet Header ts_nanosecond > 1_000_000_000"));
+            return Err(PcapError::InvalidField(
+                "Packet Header ts_nanosecond > 1_000_000_000",
+            ));
         }
 
         let incl_len = reader.read_u32::<B>()?;
@@ -66,21 +65,19 @@ impl PacketHeader {
             return Err(PcapError::InvalidField("PacketHeader incl_len > orig_len"));
         }
 
-
-        Ok(
-            PacketHeader {
-
-                ts_sec,
-                ts_nsec,
-                incl_len,
-                orig_len
-            }
-        )
+        Ok(PacketHeader {
+            ts_sec,
+            ts_nsec,
+            incl_len,
+            orig_len,
+        })
     }
 
     /// Create a new `PacketHeader` from a slice.
-    pub fn from_slice<B: ByteOrder>(mut slice: &[u8], ts_resolution: TsResolution) -> ResultParsing<(&[u8], PacketHeader)> {
-
+    pub fn from_slice<B: ByteOrder>(
+        mut slice: &[u8],
+        ts_resolution: TsResolution,
+    ) -> ResultParsing<(&[u8], PacketHeader)> {
         //Header len
         if slice.len() < 16 {
             return Err(PcapError::IncompleteBuffer(16 - slice.len()));
@@ -94,9 +91,13 @@ impl PacketHeader {
     /// Write a `PcapHeader` to a writer.
     ///
     /// Writes 24B in the writer on success.
-    pub fn write_to< W: Write, B: ByteOrder>(&self, writer: &mut W, ts_resolution: TsResolution) -> ResultParsing<()> {
+    pub fn write_to<W: Write, B: ByteOrder>(
+        &self,
+        writer: &mut W,
+        ts_resolution: TsResolution,
+    ) -> ResultParsing<()> {
         let mut ts_unsec = self.ts_nsec;
-        if ts_resolution == TsResolution::MicroSecond{
+        if ts_resolution == TsResolution::MicroSecond {
             ts_unsec /= 1000;
         }
         writer.write_u32::<B>(self.ts_sec)?;
@@ -113,7 +114,6 @@ impl PacketHeader {
     }
 }
 
-
 /// Packet with its header and data.
 ///
 /// The payload can be owned or borrowed.
@@ -123,23 +123,22 @@ pub struct Packet<'a> {
     pub header: PacketHeader,
 
     /// Payload, owned or borrowed, of the packet
-    pub data: Cow<'a, [u8]>
+    pub data: Cow<'a, [u8]>,
 }
 
 impl<'a> Packet<'a> {
     /// Create a new borrowed `Packet` with the given parameters.
     pub fn new(ts_sec: u32, ts_nsec: u32, data: &'a [u8], orig_len: u32) -> Packet<'a> {
-
         let header = PacketHeader {
             ts_sec,
             ts_nsec,
             incl_len: data.len() as u32,
-            orig_len
+            orig_len,
         };
 
         Packet {
             header,
-            data: Cow::Borrowed(data)
+            data: Cow::Borrowed(data),
         }
     }
 
@@ -149,35 +148,36 @@ impl<'a> Packet<'a> {
             ts_sec,
             ts_nsec,
             incl_len: data.len() as u32,
-            orig_len
+            orig_len,
         };
 
         Packet {
             header,
-            data: Cow::Owned(data)
+            data: Cow::Owned(data),
         }
     }
 
     /// Create a new owned `Packet` from a reader.
-    pub fn from_reader<R: Read, B: ByteOrder>(reader: &mut R, ts_resolution: TsResolution) -> ResultParsing<Packet<'static>> {
-
+    pub fn from_reader<R: Read, B: ByteOrder>(
+        reader: &mut R,
+        ts_resolution: TsResolution,
+    ) -> ResultParsing<Packet<'static>> {
         let header = PacketHeader::from_reader::<R, B>(reader, ts_resolution)?;
 
         let mut bytes = vec![0_u8; header.incl_len as usize];
         reader.read_exact(&mut bytes)?;
 
-        Ok(
-            Packet {
-
-                header,
-                data : Cow::Owned(bytes)
-            }
-        )
+        Ok(Packet {
+            header,
+            data: Cow::Owned(bytes),
+        })
     }
 
     /// Create a new borrowed `Packet` from a slice.
-    pub fn from_slice<B: ByteOrder>(slice: &'a[u8], ts_resolution: TsResolution) -> ResultParsing<(&'a[u8], Packet<'a>)> {
-
+    pub fn from_slice<B: ByteOrder>(
+        slice: &'a [u8],
+        ts_resolution: TsResolution,
+    ) -> ResultParsing<(&'a [u8], Packet<'a>)> {
         let (slice, header) = PacketHeader::from_slice::<B>(slice, ts_resolution)?;
         let len = header.incl_len as usize;
 
@@ -187,7 +187,7 @@ impl<'a> Packet<'a> {
 
         let packet = Packet {
             header,
-            data : Cow::Borrowed(&slice[..len])
+            data: Cow::Borrowed(&slice[..len]),
         };
 
         let slice = &slice[len..];
@@ -196,10 +196,10 @@ impl<'a> Packet<'a> {
     }
 
     /// Convert a borrowed `Packet` to an owned one.
-    pub fn to_owned(& self) -> Packet<'static> {
+    pub fn to_owned(&self) -> Packet<'static> {
         Packet {
             header: self.header,
-            data: Cow::Owned(self.data.as_ref().to_owned())
+            data: Cow::Owned(self.data.as_ref().to_owned()),
         }
     }
 }

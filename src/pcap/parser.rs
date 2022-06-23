@@ -1,12 +1,6 @@
 use byteorder::{BigEndian, LittleEndian};
 
-use crate::{
-    Endianness,
-    errors::*,
-    pcap::Packet,
-    pcap::PcapHeader
-};
-
+use crate::{errors::*, pcap::Packet, pcap::PcapHeader, Endianness};
 
 /// Parser for a Pcap formated stream.
 ///
@@ -44,32 +38,27 @@ use crate::{
 /// ```
 #[derive(Debug)]
 pub struct PcapParser {
-    header: PcapHeader
+    header: PcapHeader,
 }
 
 impl PcapParser {
-
     /// Creates a new `PcapParser`.
     /// Returns the parser and the remainder.
     pub fn new(slice: &[u8]) -> ResultParsing<(&[u8], PcapParser)> {
-
         let (slice, header) = PcapHeader::from_slice(slice)?;
 
-        let parser = PcapParser {
-            header
-        };
+        let parser = PcapParser { header };
 
         Ok((slice, parser))
     }
 
     /// Returns the next packet and the remainder.
-    pub fn next_packet<'a>(&self, slice: &'a[u8]) -> ResultParsing<(&'a [u8], Packet<'a>)> {
-
+    pub fn next_packet<'a>(&self, slice: &'a [u8]) -> ResultParsing<(&'a [u8], Packet<'a>)> {
         let ts_resolution = self.header.ts_resolution();
 
         match self.header.endianness() {
             Endianness::Big => Packet::from_slice::<BigEndian>(slice, ts_resolution),
-            Endianness::Little => Packet::from_slice::<LittleEndian>(slice, ts_resolution)
+            Endianness::Little => Packet::from_slice::<LittleEndian>(slice, ts_resolution),
         }
     }
 }

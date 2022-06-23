@@ -1,14 +1,13 @@
-use crate::pcapng::blocks::opts_from_slice;
 use crate::errors::PcapError;
+use crate::pcapng::blocks::opts_from_slice;
+use crate::pcapng::{CustomBinaryOption, CustomUtf8Option, UnknownOption};
 use byteorder::{ByteOrder, ReadBytesExt};
-use crate::pcapng::{CustomUtf8Option, CustomBinaryOption, UnknownOption};
-use std::borrow::Cow;
 use derive_into_owned::IntoOwned;
+use std::borrow::Cow;
 
 /// An Enhanced Packet Block (EPB) is the standard container for storing the packets coming from the network.
 #[derive(Clone, Debug, IntoOwned)]
 pub struct EnhancedPacketBlock<'a> {
-
     /// It specifies the interface this packet comes from.
     /// The correct interface will be the one whose Interface Description Block
     /// (within the current Section of the file) is identified by the same number of this field.
@@ -28,15 +27,15 @@ pub struct EnhancedPacketBlock<'a> {
     pub data: Cow<'a, [u8]>,
 
     /// Options
-    pub options: Vec<EnhancedPacketOption<'a>>
+    pub options: Vec<EnhancedPacketOption<'a>>,
 }
 
 impl<'a> EnhancedPacketBlock<'a> {
-
     pub fn from_slice<B: ByteOrder>(mut slice: &'a [u8]) -> Result<(&'a [u8], Self), PcapError> {
-
         if slice.len() < 20 {
-            return Err(PcapError::InvalidField("EnhancedPacketBlock: block length length < 20"));
+            return Err(PcapError::InvalidField(
+                "EnhancedPacketBlock: block length length < 20",
+            ));
         }
 
         let interface_id = slice.read_u32::<B>()?;
@@ -48,7 +47,9 @@ impl<'a> EnhancedPacketBlock<'a> {
         let tot_len = captured_len as usize + pad_len;
 
         if slice.len() < tot_len {
-            return Err(PcapError::InvalidField("EnhancedPacketBlock: captured_len + padding > block length"));
+            return Err(PcapError::InvalidField(
+                "EnhancedPacketBlock: captured_len + padding > block length",
+            ));
         }
 
         let data = &slice[..captured_len as usize];
@@ -61,7 +62,7 @@ impl<'a> EnhancedPacketBlock<'a> {
             captured_len,
             original_len,
             data: Cow::Borrowed(data),
-            options
+            options,
         };
 
         Ok((slice, block))
@@ -70,7 +71,6 @@ impl<'a> EnhancedPacketBlock<'a> {
 
 #[derive(Clone, Debug, IntoOwned)]
 pub enum EnhancedPacketOption<'a> {
-
     /// Comment associated with the current block
     Comment(Cow<'a, str>),
 
@@ -93,42 +93,43 @@ pub enum EnhancedPacketOption<'a> {
     CustomUtf8(CustomUtf8Option<'a>),
 
     /// Unknown option
-    Unknown(UnknownOption<'a>)
+    Unknown(UnknownOption<'a>),
 }
 
-
 impl<'a> EnhancedPacketOption<'a> {
-
-    pub fn from_slice<B:ByteOrder>(slice: &'a [u8]) -> Result<(&'a[u8], Vec<Self>), PcapError> {
-
+    pub fn from_slice<B: ByteOrder>(slice: &'a [u8]) -> Result<(&'a [u8], Vec<Self>), PcapError> {
         opts_from_slice::<B, _, _>(slice, |mut slice, code, length| {
-
             let opt = match code {
-
                 1 => EnhancedPacketOption::Comment(Cow::Borrowed(std::str::from_utf8(slice)?)),
                 2 => {
                     if slice.len() != 4 {
-                        return Err(PcapError::InvalidField("EnhancedPacketOption: Flags length != 4"))
+                        return Err(PcapError::InvalidField(
+                            "EnhancedPacketOption: Flags length != 4",
+                        ));
                     }
                     EnhancedPacketOption::Flags(slice.read_u32::<B>()?)
-                },
+                }
                 3 => EnhancedPacketOption::Hash(Cow::Borrowed(slice)),
                 4 => {
                     if slice.len() != 8 {
-                        return Err(PcapError::InvalidField("EnhancedPacketOption: DropCount length != 8"))
+                        return Err(PcapError::InvalidField(
+                            "EnhancedPacketOption: DropCount length != 8",
+                        ));
                     }
                     EnhancedPacketOption::DropCount(slice.read_u64::<B>()?)
-                },
+                }
 
-                2988 | 19372 => EnhancedPacketOption::CustomUtf8(CustomUtf8Option::from_slice::<B>(code, slice)?),
-                2989 | 19373 => EnhancedPacketOption::CustomBinary(CustomBinaryOption::from_slice::<B>(code, slice)?),
+                2988 | 19372 => EnhancedPacketOption::CustomUtf8(
+                    CustomUtf8Option::from_slice::<B>(code, slice)?,
+                ),
+                2989 | 19373 => EnhancedPacketOption::CustomBinary(
+                    CustomBinaryOption::from_slice::<B>(code, slice)?,
+                ),
 
-                _ => EnhancedPacketOption::Unknown(UnknownOption::new(code, length, slice))
+                _ => EnhancedPacketOption::Unknown(UnknownOption::new(code, length, slice)),
             };
 
             Ok(opt)
         })
     }
 }
-
-

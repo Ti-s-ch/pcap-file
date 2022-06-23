@@ -1,10 +1,10 @@
-use std::io::Read;
-use byteorder::{BigEndian, LittleEndian};
 use crate::errors::PcapError;
-use crate::pcapng::blocks::{ParsedBlock, EnhancedPacketBlock, InterfaceDescriptionBlock};
-use crate::Endianness;
+use crate::pcapng::blocks::{EnhancedPacketBlock, InterfaceDescriptionBlock, ParsedBlock};
+use crate::pcapng::{Block, BlockType, SectionHeaderBlock};
 use crate::peek_reader::PeekReader;
-use crate::pcapng::{Block, SectionHeaderBlock, BlockType};
+use crate::Endianness;
+use byteorder::{BigEndian, LittleEndian};
+use std::io::Read;
 
 /// Wraps another reader and uses it to read a PcapNg formated stream.
 ///
@@ -34,30 +34,26 @@ use crate::pcapng::{Block, SectionHeaderBlock, BlockType};
 pub struct PcapNgReader<R: Read> {
     reader: PeekReader<R>,
     section: SectionHeaderBlock<'static>,
-    interfaces: Vec<InterfaceDescriptionBlock<'static>>
+    interfaces: Vec<InterfaceDescriptionBlock<'static>>,
 }
 
 impl<R: Read> PcapNgReader<R> {
-
     /// Creates a new `PcapNgReader` from a reader.
     /// Parses the first block which must be a valid SectionHeaderBlock
     pub fn new(mut reader: R) -> Result<PcapNgReader<R>, PcapError> {
-
         let current_block = Block::from_reader::<_, BigEndian>(&mut reader)?;
         let section = current_block.parsed()?;
 
         let section = match section {
             ParsedBlock::SectionHeader(section) => section.into_owned(),
-            _ => return Err(PcapError::InvalidField("SectionHeader missing"))
+            _ => return Err(PcapError::InvalidField("SectionHeader missing")),
         };
 
-        Ok(
-            PcapNgReader {
-                reader: PeekReader::new(reader),
-                section,
-                interfaces: vec![]
-            }
-        )
+        Ok(PcapNgReader {
+            reader: PeekReader::new(reader),
+            section,
+            interfaces: vec![],
+        })
     }
 
     /// Returns the current SectionHeaderBlock
@@ -71,28 +67,33 @@ impl<R: Read> PcapNgReader<R> {
     }
 
     /// Returns the InterfaceDescriptionBlock corresponding to the given packet
-    pub fn packet_interface(&self, packet: &EnhancedPacketBlock) -> Option<&InterfaceDescriptionBlock> {
+    pub fn packet_interface(
+        &self,
+        packet: &EnhancedPacketBlock,
+    ) -> Option<&InterfaceDescriptionBlock> {
         self.interfaces.get(packet.interface_id as usize)
     }
 
     fn next_impl(&mut self) -> Result<Block<'static>, PcapError> {
-
         // Read next Block
         let endianess = self.section.endianness();
         let block = match endianess {
             Endianness::Big => Block::from_reader::<_, BigEndian>(&mut self.reader)?,
-            Endianness::Little => Block::from_reader::<_, LittleEndian>(&mut self.reader)?
+            Endianness::Little => Block::from_reader::<_, LittleEndian>(&mut self.reader)?,
         };
 
         match block.type_ {
             BlockType::SectionHeader => {
-
                 self.section = block.parsed()?.into_section_header().unwrap().into_owned();
                 self.interfaces.clear();
-            },
-            BlockType::InterfaceDescription => {
-                self.interfaces.push(block.parsed()?.into_interface_description().unwrap().into_owned())
-            },
+            }
+            BlockType::InterfaceDescription => self.interfaces.push(
+                block
+                    .parsed()?
+                    .into_interface_description()
+                    .unwrap()
+                    .into_owned(),
+            ),
             _ => {}
         }
 

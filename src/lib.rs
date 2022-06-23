@@ -16,9 +16,9 @@ pub(crate) mod errors;
 pub use errors::*;
 
 pub mod pcap;
-pub use pcap::{PcapReader, PcapParser, PcapWriter};
+pub use pcap::{PcapParser, PcapReader, PcapWriter};
 
 pub mod pcapng;
-pub use pcapng::{PcapNgReader, PcapNgParser};
+pub use pcapng::{PcapNgParser, PcapNgReader};
 
 pub(crate) mod peek_reader;
